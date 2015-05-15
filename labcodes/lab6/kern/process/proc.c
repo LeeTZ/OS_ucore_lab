@@ -87,7 +87,7 @@ static struct proc_struct *
 alloc_proc(void) {
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL) {
-    //LAB4:EXERCISE1 YOUR CODE
+    //LAB4:EXERCISE1 2011011268
     /*
      * below fields in proc_struct need to be initialized
      *       enum proc_state state;                      // Process state
@@ -103,13 +103,16 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
-     //LAB5 YOUR CODE : (update LAB4 steps)
-    /*
-     * below fields(add in LAB5) in proc_struct need to be initialized	
-     *       uint32_t wait_state;                        // waiting state
-     *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-	 */
-     //LAB6 YOUR CODE : (update LAB5 steps)
+      memset((void*)proc, 0, sizeof(struct proc_struct));
+      proc->state = PROC_UNINIT;
+      proc->pid = -1;
+      proc->cr3 = boot_cr3;
+     //LAB5 2011011268 : (update LAB4 steps)
+    proc->wait_state = 0;
+    proc->cptr = NULL;
+    proc->yptr = NULL;
+    proc->optr = NULL;
+     //LAB6 2011011268 : (update LAB5 steps)
     /*
      * below fields(add in LAB6) in proc_struct need to be initialized
      *     struct run_queue *rq;                       // running queue contains Process
@@ -119,6 +122,17 @@ alloc_proc(void) {
      *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
      *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
      */
+      proc->rq = NULL;
+      list_init(&(proc->run_link));
+      proc->time_slice = 0;
+    skew_heap_init(&(proc->lab6_run_pool));
+    if (current == NULL) {
+      proc->lab6_stride = 0;
+      proc->lab6_priority = 1;
+    }else {
+      proc->lab6_stride = current->lab6_stride;
+      proc->lab6_priority = current->lab6_priority;
+    }   
     }
     return proc;
 }
@@ -380,7 +394,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     ret = -E_NO_MEM;
-    //LAB4:EXERCISE2 YOUR CODE
+//LAB4:EXERCISE2 2011011268
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
      * MACROs or Functions:
@@ -405,15 +419,29 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
-
-	//LAB5 YOUR CODE : (update LAB4 steps)
+    
+  //LAB5 2011011268 : (update LAB4 steps)
    /* Some Functions
     *    set_links:  set the relation links of process.  ALSO SEE: remove_links:  lean the relation links of process 
     *    -------------------
-	*    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
-	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
+  *    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
+  *    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
-	
+    if ((proc = alloc_proc()) == NULL)
+      goto fork_out;    
+    if (setup_kstack(proc) != 0)
+      goto bad_fork_cleanup_proc;
+    if (copy_mm(clone_flags, proc) != 0)
+      goto bad_fork_cleanup_kstack;    
+  copy_thread(proc, stack, tf);
+  proc->pid = get_pid();
+  assert(current->wait_state == 0);
+  proc->parent = current;
+  set_links(proc);
+  hash_proc(proc);
+  wakeup_proc(proc);
+  ret = proc->pid;  
+
 fork_out:
     return ret;
 
